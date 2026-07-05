@@ -4,33 +4,33 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/RootNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { getErrorMessage } from '../../api/client';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import { validators } from '../../utils/validation';
 import { Screen, Input, Button, Icon } from '../../components/ui';
 import { colors, spacing, typography, radius } from '../../theme';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'AdminLogin'>;
+type AdminLoginForm = { email: string; password: string };
 
 export default function AdminLoginScreen({}: Props) {
   const { loginAdmin } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const validate = () => {
-    const next: typeof errors = {};
-    if (!email.trim()) next.email = 'Email is required';
-    if (!password) next.password = 'Password is required';
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  };
+  const form = useFormValidation<AdminLoginForm>(
+    { email: '', password: '' },
+    {
+      email: [validators.required('Email is required'), validators.email()],
+      password: [validators.required('Password is required')],
+    },
+  );
 
   const handleLogin = async () => {
     setFormError('');
-    if (!validate()) return;
+    if (!form.validateAll()) return;
     setLoading(true);
     try {
-      await loginAdmin(email.trim(), password);
+      await loginAdmin(form.values.email.trim(), form.values.password);
     } catch (e) {
       setFormError(getErrorMessage(e));
     } finally {
@@ -56,23 +56,25 @@ export default function AdminLoginScreen({}: Props) {
 
           <Input
             label="Admin Email"
-            value={email}
-            onChangeText={(t) => { setEmail(t); if (errors.email) setErrors((e) => ({ ...e, email: undefined })); }}
+            value={form.values.email}
+            onChangeText={(t) => form.setValue('email', t)}
+            onBlur={() => form.blur('email')}
             keyboardType="email-address"
             autoCapitalize="none"
             placeholder="admin@taxisanchalak.com"
             leftIcon="mail-outline"
             required
-            error={errors.email}
+            error={form.fieldError('email')}
           />
           <Input
             label="Password"
-            value={password}
-            onChangeText={(t) => { setPassword(t); if (errors.password) setErrors((e) => ({ ...e, password: undefined })); }}
+            value={form.values.password}
+            onChangeText={(t) => form.setValue('password', t)}
+            onBlur={() => form.blur('password')}
             secureTextEntry
             leftIcon="lock-closed-outline"
             required
-            error={errors.password}
+            error={form.fieldError('password')}
           />
           <Button title="Admin Login" onPress={handleLogin} loading={loading} variant="secondary" style={{ marginTop: spacing.sm }} />
         </ScrollView>

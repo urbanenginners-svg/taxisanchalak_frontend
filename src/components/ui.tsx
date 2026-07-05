@@ -282,6 +282,19 @@ export function FAB({ icon = 'add', onPress, label }: { icon?: IoniconName; onPr
 }
 
 /* ------------------------------------------------------------------ */
+/* Field error message                                                  */
+/* ------------------------------------------------------------------ */
+
+function FieldErrorMessage({ message }: { message: string }) {
+  return (
+    <View style={styles.errorRow}>
+      <Icon name="alert-circle" size={14} color={colors.error} />
+      <Text style={styles.errorText}>{message}</Text>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Inputs                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -289,6 +302,7 @@ export function Input({
   label,
   value,
   onChangeText,
+  onBlur,
   placeholder,
   secureTextEntry,
   keyboardType,
@@ -305,6 +319,7 @@ export function Input({
   label?: string;
   value: string;
   onChangeText: (t: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'numeric';
@@ -334,12 +349,19 @@ export function Input({
         style={[
           styles.inputBox,
           multiline && styles.inputBoxMultiline,
-          focused && styles.inputBoxFocused,
+          focused && !hasError && styles.inputBoxFocused,
           hasError && styles.inputBoxError,
           !editable && styles.inputBoxDisabled,
         ]}
       >
-        {leftIcon && <Icon name={leftIcon} size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />}
+        {leftIcon && (
+          <Icon
+            name={leftIcon}
+            size={18}
+            color={colors.textSecondary}
+            style={{ marginRight: 8 }}
+          />
+        )}
         {prefix ? <Text style={styles.inputPrefix}>{prefix}</Text> : null}
         <TextInput
           style={[styles.input, multiline && styles.inputMultiline]}
@@ -355,7 +377,10 @@ export function Input({
           autoCapitalize={autoCapitalize}
           textAlignVertical={multiline ? 'top' : 'center'}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            onBlur?.();
+          }}
           accessibilityLabel={label ?? placeholder}
         />
         {secureTextEntry && (
@@ -365,7 +390,7 @@ export function Input({
         )}
       </View>
       {hasError ? (
-        <Text style={styles.errorText}>{error}</Text>
+        <FieldErrorMessage message={error!} />
       ) : helperText ? (
         <Text style={styles.helperText}>{helperText}</Text>
       ) : null}
@@ -380,6 +405,7 @@ export function SelectField({
   required,
   options,
   onSelect,
+  onBlur,
   helperText,
   error,
   emptyMessage = 'No options available',
@@ -392,6 +418,7 @@ export function SelectField({
   required?: boolean;
   options: { id: string; title: string; subtitle?: string }[];
   onSelect: (id: string) => void;
+  onBlur?: () => void;
   helperText?: string;
   error?: string;
   emptyMessage?: string;
@@ -414,6 +441,7 @@ export function SelectField({
   const close = () => {
     setOpen(false);
     setQuery('');
+    onBlur?.();
   };
 
   return (
@@ -430,13 +458,16 @@ export function SelectField({
         accessibilityRole="button"
         accessibilityLabel={label ?? 'Select'}
       >
-        <Text style={selected ? styles.selectValue : styles.selectPlaceholder} numberOfLines={1}>
+        <Text
+          style={selected ? styles.selectValue : styles.selectPlaceholder}
+          numberOfLines={1}
+        >
           {selected ? (selected.subtitle ? `${selected.title}, ${selected.subtitle}` : selected.title) : placeholder}
         </Text>
         <Icon name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
       {hasError ? (
-        <Text style={styles.errorText}>{error}</Text>
+        <FieldErrorMessage message={error!} />
       ) : helperText ? (
         <Text style={styles.helperText}>{helperText}</Text>
       ) : null}
@@ -504,20 +535,25 @@ export function DateField({
   label,
   value,
   onChange,
+  onBlur,
   required,
   helperText,
+  error,
   maximumDate,
 }: {
   label?: string;
   value: string;
   onChange: (isoDate: string) => void;
+  onBlur?: () => void;
   required?: boolean;
   helperText?: string;
+  error?: string;
   maximumDate?: Date;
 }) {
   const [open, setOpen] = useState(false);
   const parsed = value ? new Date(value) : new Date(1995, 0, 1);
   const [cursor, setCursor] = useState({ year: parsed.getFullYear(), month: parsed.getMonth() });
+  const hasError = Boolean(error);
 
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
   const firstWeekday = new Date(cursor.year, cursor.month, 1).getDay();
@@ -533,6 +569,11 @@ export function DateField({
     ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : '';
 
+  const close = () => {
+    setOpen(false);
+    onBlur?.();
+  };
+
   return (
     <View style={styles.inputWrap}>
       {label ? (
@@ -541,16 +582,24 @@ export function DateField({
           {required ? <Text style={styles.required}> *</Text> : null}
         </Text>
       ) : null}
-      <TouchableOpacity style={[styles.inputBox, styles.selectBox]} onPress={() => setOpen(true)} accessibilityRole="button">
+      <TouchableOpacity
+        style={[styles.inputBox, styles.selectBox, hasError && styles.inputBoxError]}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+      >
         <Icon name="calendar-outline" size={18} color={colors.textSecondary} style={{ marginRight: 8 }} />
-        <Text style={displayValue ? styles.selectValue : styles.selectPlaceholder}>
+        <Text style={[displayValue ? styles.selectValue : styles.selectPlaceholder, { flex: 1 }]}>
           {displayValue || 'Select date'}
         </Text>
       </TouchableOpacity>
-      {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
+      {hasError ? (
+        <FieldErrorMessage message={error!} />
+      ) : helperText ? (
+        <Text style={styles.helperText}>{helperText}</Text>
+      ) : null}
 
-      <Modal visible={open} animationType="fade" transparent onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.sheetOverlay} onPress={() => setOpen(false)}>
+      <Modal visible={open} animationType="fade" transparent onRequestClose={close}>
+        <Pressable style={styles.sheetOverlay} onPress={close}>
           <Pressable style={styles.calendarCard} onPress={() => {}}>
             <View style={styles.calendarHeader}>
               <IconButton name="chevron-back" onPress={() => setCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { ...c, month: c.month - 1 }))} />
@@ -579,7 +628,7 @@ export function DateField({
                     style={[styles.calendarCell, isSelected && styles.calendarCellSelected]}
                     onPress={() => {
                       onChange(iso);
-                      setOpen(false);
+                      close();
                     }}
                   >
                     <Text style={[styles.calendarDayText, disabled && { color: colors.disabledText }, isSelected && styles.calendarDayTextSelected]}>
@@ -589,7 +638,7 @@ export function DateField({
                 );
               })}
             </View>
-            <Button title="Close" variant="ghost" onPress={() => setOpen(false)} />
+            <Button title="Close" variant="ghost" onPress={close} />
           </Pressable>
         </Pressable>
       </Modal>
@@ -1018,7 +1067,8 @@ const styles = StyleSheet.create({
   inputPrefix: { color: colors.textSecondary, fontSize: 15, marginRight: 6 },
   input: { flex: 1, paddingVertical: 13, fontSize: 15, color: colors.text },
   inputMultiline: { minHeight: 88, paddingTop: 2 },
-  errorText: { ...typography.caption, color: colors.error, marginTop: 6 },
+  errorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 6 },
+  errorText: { ...typography.caption, color: colors.error, flex: 1, fontWeight: '600' },
   helperText: { ...typography.caption, color: colors.textSecondary, marginTop: 6 },
 
   selectBox: { justifyContent: 'space-between', paddingVertical: 13 },

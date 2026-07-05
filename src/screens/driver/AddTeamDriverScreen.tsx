@@ -1,39 +1,51 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { ScrollView, StyleSheet, Text, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { teamDriverApi } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
+import { useFormValidation } from '../../hooks/useFormValidation';
+import { validators } from '../../utils/validation';
 import { Screen, Input, Button, useToast } from '../../components/ui';
-import { spacing } from '../../theme';
+import { colors, spacing, typography } from '../../theme';
+
+type TeamDriverForm = {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email: string;
+};
 
 export default function AddTeamDriverScreen() {
   const navigation = useNavigation();
   const toast = useToast();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [email, setEmail] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const validate = () => {
-    const next: Record<string, string> = {};
-    if (!firstName.trim()) next.firstName = 'Required';
-    if (!lastName.trim()) next.lastName = 'Required';
-    if (!phoneNumber.trim() || phoneNumber.trim().length < 10) next.phoneNumber = 'Enter a valid 10-digit number';
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  };
+  const form = useFormValidation<TeamDriverForm>(
+    { firstName: '', lastName: '', phoneNumber: '', email: '' },
+    {
+      firstName: [validators.required('First name is required')],
+      lastName: [validators.required('Last name is required')],
+      phoneNumber: [validators.required('Phone is required'), validators.phone()],
+      email: [validators.email()],
+    },
+  );
 
   const submit = async () => {
-    if (!validate()) return;
+    setFormError('');
+    if (!form.validateAll()) return;
     setLoading(true);
     try {
-      await teamDriverApi.create({ firstName: firstName.trim(), lastName: lastName.trim(), phoneNumber: phoneNumber.trim(), email: email.trim() || undefined });
+      await teamDriverApi.create({
+        firstName: form.values.firstName.trim(),
+        lastName: form.values.lastName.trim(),
+        phoneNumber: form.values.phoneNumber.trim(),
+        email: form.values.email.trim() || undefined,
+      });
       toast.show('Team driver added', 'success');
       navigation.goBack();
     } catch (e) {
-      setErrors((er) => ({ ...er, form: getErrorMessage(e) }));
+      setFormError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -43,10 +55,11 @@ export default function AddTeamDriverScreen() {
     <Screen>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Input label="First Name" value={firstName} onChangeText={(t) => { setFirstName(t); }} required error={errors.firstName} />
-          <Input label="Last Name" value={lastName} onChangeText={setLastName} required error={errors.lastName} />
-          <Input label="Phone" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" prefix="+91" required error={errors.phoneNumber} />
-          <Input label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+          <Input label="First Name" value={form.values.firstName} onChangeText={(t) => form.setValue('firstName', t)} onBlur={() => form.blur('firstName')} required error={form.fieldError('firstName')} />
+          <Input label="Last Name" value={form.values.lastName} onChangeText={(t) => form.setValue('lastName', t)} onBlur={() => form.blur('lastName')} required error={form.fieldError('lastName')} />
+          <Input label="Phone" value={form.values.phoneNumber} onChangeText={(t) => form.setValue('phoneNumber', t)} onBlur={() => form.blur('phoneNumber')} keyboardType="phone-pad" prefix="+91" required error={form.fieldError('phoneNumber')} />
+          <Input label="Email (optional)" value={form.values.email} onChangeText={(t) => form.setValue('email', t)} onBlur={() => form.blur('email')} keyboardType="email-address" autoCapitalize="none" error={form.fieldError('email')} />
           <Button title="Save Team Driver" onPress={submit} loading={loading} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -54,4 +67,7 @@ export default function AddTeamDriverScreen() {
   );
 }
 
-const styles = StyleSheet.create({ content: { padding: spacing.lg } });
+const styles = StyleSheet.create({
+  content: { padding: spacing.lg },
+  formError: { ...typography.bodySmallMedium, color: colors.error, marginBottom: spacing.md },
+});
