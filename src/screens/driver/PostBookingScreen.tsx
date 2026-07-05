@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { bookingApi } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
-import { Screen, Input, Button, SectionHeader, useToast } from '../../components/ui';
+import { INDIAN_CITY_OPTIONS, cityById } from '../../data/indianCities';
+import { Screen, Input, Button, SectionHeader, SelectField, useToast } from '../../components/ui';
 import { colors, spacing, typography } from '../../theme';
 
 export default function PostBookingScreen() {
   const navigation = useNavigation();
   const toast = useToast();
-  const [fromLocation, setFrom] = useState('');
-  const [toLocation, setTo] = useState('');
+  const [fromCityId, setFromCityId] = useState<string>();
+  const [toCityId, setToCityId] = useState<string>();
   const [actualPrice, setPrice] = useState('');
   const [commission, setCommission] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -20,12 +21,15 @@ export default function PostBookingScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
+  const cityOptions = useMemo(() => INDIAN_CITY_OPTIONS, []);
+
   const clearError = (key: string) => errors[key] && setErrors((e) => ({ ...e, [key]: '' }));
 
   const validate = () => {
     const next: Record<string, string> = {};
-    if (!fromLocation.trim()) next.from = 'Required';
-    if (!toLocation.trim()) next.to = 'Required';
+    if (!fromCityId) next.from = 'Select a city';
+    if (!toCityId) next.to = 'Select a city';
+    if (fromCityId && toCityId && fromCityId === toCityId) next.to = 'Destination must be different from origin';
     if (!actualPrice || Number(actualPrice) <= 0) next.price = 'Enter a valid fare';
     if (!commission || Number(commission) < 0) next.commission = 'Enter a valid commission';
     if (Number(commission) > Number(actualPrice || 0)) next.commission = 'Commission cannot exceed fare';
@@ -37,11 +41,15 @@ export default function PostBookingScreen() {
 
   const submit = async () => {
     if (!validate()) return;
+    const fromCity = cityById(fromCityId!);
+    const toCity = cityById(toCityId!);
+    if (!fromCity || !toCity) return;
+
     setLoading(true);
     try {
       await bookingApi.create({
-        fromLocation: fromLocation.trim(),
-        toLocation: toLocation.trim(),
+        fromLocation: fromCity.name,
+        toLocation: toCity.name,
         actualPrice: Number(actualPrice),
         commission: Number(commission),
         customer: {
@@ -67,8 +75,28 @@ export default function PostBookingScreen() {
           {errors.form ? <Text style={styles.formError}>{errors.form}</Text> : null}
 
           <SectionHeader title="Route" />
-          <Input label="From" value={fromLocation} onChangeText={(t) => { setFrom(t); clearError('from'); }} placeholder="e.g. Delhi" required error={errors.from} leftIcon="radio-button-on-outline" />
-          <Input label="To" value={toLocation} onChangeText={(t) => { setTo(t); clearError('to'); }} placeholder="e.g. Chandigarh" required error={errors.to} leftIcon="location-outline" />
+          <SelectField
+            label="From"
+            value={fromCityId}
+            onSelect={(id) => { setFromCityId(id); clearError('from'); if (toCityId === id) setErrors((e) => ({ ...e, to: 'Destination must be different from origin' })); }}
+            options={cityOptions}
+            placeholder="Select origin city"
+            searchPlaceholder="Search city or state"
+            searchable
+            required
+            error={errors.from}
+          />
+          <SelectField
+            label="To"
+            value={toCityId}
+            onSelect={(id) => { setToCityId(id); clearError('to'); }}
+            options={cityOptions}
+            placeholder="Select destination city"
+            searchPlaceholder="Search city or state"
+            searchable
+            required
+            error={errors.to}
+          />
 
           <SectionHeader title="Pricing" style={{ marginTop: spacing.sm }} />
           <Input label="Actual Fare (₹)" value={actualPrice} onChangeText={(t) => { setPrice(t); clearError('price'); }} keyboardType="numeric" required error={errors.price} placeholder="10000" />

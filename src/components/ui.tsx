@@ -381,7 +381,10 @@ export function SelectField({
   options,
   onSelect,
   helperText,
+  error,
   emptyMessage = 'No options available',
+  searchable = false,
+  searchPlaceholder = 'Search…',
 }: {
   label?: string;
   value?: string;
@@ -390,10 +393,28 @@ export function SelectField({
   options: { id: string; title: string; subtitle?: string }[];
   onSelect: (id: string) => void;
   helperText?: string;
+  error?: string;
   emptyMessage?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const selected = options.find((o) => o.id === value);
+  const hasError = Boolean(error);
+
+  const filtered = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const q = query.trim().toLowerCase();
+    return options.filter(
+      (o) => o.title.toLowerCase().includes(q) || (o.subtitle?.toLowerCase().includes(q) ?? false),
+    );
+  }, [options, query, searchable]);
+
+  const close = () => {
+    setOpen(false);
+    setQuery('');
+  };
 
   return (
     <View style={styles.inputWrap}>
@@ -404,36 +425,54 @@ export function SelectField({
         </Text>
       ) : null}
       <TouchableOpacity
-        style={[styles.inputBox, styles.selectBox]}
+        style={[styles.inputBox, styles.selectBox, hasError && styles.inputBoxError]}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={label ?? 'Select'}
       >
         <Text style={selected ? styles.selectValue : styles.selectPlaceholder} numberOfLines={1}>
-          {selected ? selected.title : placeholder}
+          {selected ? (selected.subtitle ? `${selected.title}, ${selected.subtitle}` : selected.title) : placeholder}
         </Text>
         <Icon name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
-      {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
+      {hasError ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : helperText ? (
+        <Text style={styles.helperText}>{helperText}</Text>
+      ) : null}
 
-      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.sheetOverlay} onPress={() => setOpen(false)}>
+      <Modal visible={open} animationType="slide" transparent onRequestClose={close}>
+        <Pressable style={styles.sheetOverlay} onPress={close}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>{label ?? 'Select an option'}</Text>
+            {searchable && (
+              <SearchBar
+                value={query}
+                onChangeText={setQuery}
+                placeholder={searchPlaceholder}
+                onClear={() => setQuery('')}
+              />
+            )}
             {options.length === 0 ? (
               <EmptyState icon="albums-outline" title="Nothing here yet" message={emptyMessage} />
+            ) : filtered.length === 0 ? (
+              <EmptyState icon="search-outline" title="No matches" message="Try a different city or state name." />
             ) : (
               <FlatList
-                data={options}
+                data={filtered}
                 keyExtractor={(o) => o.id}
-                style={{ maxHeight: 360 }}
+                style={styles.sheetList}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={20}
+                maxToRenderPerBatch={30}
+                windowSize={8}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.sheetOption}
                     onPress={() => {
                       onSelect(item.id);
-                      setOpen(false);
+                      close();
                     }}
                     accessibilityRole="button"
                   >
@@ -447,7 +486,7 @@ export function SelectField({
                 ItemSeparatorComponent={() => <Divider />}
               />
             )}
-            <Button title="Close" variant="ghost" onPress={() => setOpen(false)} />
+            <Button title="Close" variant="ghost" onPress={close} />
           </Pressable>
         </Pressable>
       </Modal>
@@ -1003,6 +1042,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   sheetTitle: { ...typography.h3, color: colors.text, marginBottom: spacing.sm },
+  sheetList: { maxHeight: 420 },
   sheetOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
   sheetOptionTitle: { ...typography.bodyMedium, color: colors.text },
   sheetOptionSubtitle: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
