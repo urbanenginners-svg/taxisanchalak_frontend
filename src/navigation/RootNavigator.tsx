@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { colors } from '../theme';
 
 import WelcomeScreen from '../screens/auth/WelcomeScreen';
@@ -20,12 +20,20 @@ export type AuthStackParamList = {
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
+export const authHeaderOptions = {
+  headerStyle: { backgroundColor: colors.surface },
+  headerShadowVisible: false,
+  headerTintColor: colors.text,
+  headerTitleStyle: { fontWeight: '700' as const, fontSize: 17, color: colors.text },
+  headerBackTitleVisible: false,
+};
+
 export default function RootNavigator() {
   const { user, role, loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -33,16 +41,10 @@ export default function RootNavigator() {
 
   if (!user) {
     return (
-      <AuthStack.Navigator
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.header },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      >
+      <AuthStack.Navigator screenOptions={authHeaderOptions}>
         <AuthStack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <AuthStack.Screen name="DriverLogin" component={DriverLoginScreen} options={{ title: 'Driver Login' }} />
-        <AuthStack.Screen name="DriverRegister" component={DriverRegisterScreen} options={{ title: 'Driver Sign Up' }} />
+        <AuthStack.Screen name="DriverRegister" component={DriverRegisterScreen} options={{ title: 'Create Account' }} />
         <AuthStack.Screen name="AdminLogin" component={AdminLoginScreen} options={{ title: 'Admin Login' }} />
       </AuthStack.Navigator>
     );
@@ -54,3 +56,7 @@ export default function RootNavigator() {
 
   return <DriverNavigator />;
 }
+
+const styles = StyleSheet.create({
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+});

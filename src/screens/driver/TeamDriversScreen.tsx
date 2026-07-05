@@ -1,42 +1,42 @@
-import React, { useCallback, useState } from 'react';
-import { FlatList, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import React, { useMemo, useState } from 'react';
+import { FlatList, Alert, StyleSheet, Text, View, RefreshControl, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { teamDriverApi } from '../../api/services';
 import { getErrorMessage } from '../../api/client';
 import { DriverStackParamList } from '../../navigation/DriverNavigator';
-import { Screen, Card, Badge, EmptyState, Button } from '../../components/ui';
-import { colors, spacing } from '../../theme';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { Screen, Card, EmptyState, ErrorState, SkeletonList, SearchBar, Button, Avatar, IconButton, useToast } from '../../components/ui';
+import { colors, spacing, typography } from '../../theme';
 import type { TeamDriver } from '../../types';
 
 export default function TeamDriversScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<DriverStackParamList>>();
-  const [drivers, setDrivers] = useState<TeamDriver[]>([]);
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+  const { items, setItems, loading, refreshing, refresh, error, load, loadMore, loadingMore } = usePaginatedList(
+    (page) => teamDriverApi.list(page),
+  );
+  const [query, setQuery] = useState('');
 
-  const load = async () => {
-    try {
-      const res = await teamDriverApi.list();
-      setDrivers(res.data.data);
-    } catch (e) {
-      Alert.alert('Error', getErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (d) => `${d.firstName} ${d.lastName}`.toLowerCase().includes(q) || d.phoneNumber.includes(q),
+    );
+  }, [items, query]);
 
-  useFocusEffect(useCallback(() => { load(); }, []));
-
-  const remove = (id: string) => {
-    Alert.alert('Remove Driver', 'Remove this team driver?', [
+  const remove = (driver: TeamDriver) => {
+    Alert.alert('Remove Driver', `Remove ${driver.firstName} ${driver.lastName} from your team?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           try {
-            await teamDriverApi.remove(id);
-            load();
+            await teamDriverApi.remove(driver._id);
+            setItems((prev) => prev.filter((d) => d._id !== driver._id));
+            toast.show('Team driver removed', 'success');
           } catch (e) {
             Alert.alert('Error', getErrorMessage(e));
           }
@@ -47,34 +47,56 @@ export default function TeamDriversScreen() {
 
   return (
     <Screen>
-      <FlatList
-        data={drivers}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <Button title="+ Add Team Driver" onPress={() => navigation.navigate('AddTeamDriver')} />
-        }
-        ListEmptyComponent={!loading ? <EmptyState message="No team drivers yet" /> : null}
-        renderItem={({ item }) => (
-          <Card>
-            <Badge label="Team Driver" color={colors.header} />
-            <Text style={styles.name}>{item.firstName} {item.lastName}</Text>
-            <Text style={styles.muted}>{item.phoneNumber}</Text>
-            {item.email ? <Text style={styles.muted}>{item.email}</Text> : null}
-            <TouchableOpacity onPress={() => remove(item._id)} style={styles.remove}>
-              <Text style={styles.removeText}>Remove</Text>
-            </TouchableOpacity>
-          </Card>
-        )}
-      />
+      <View style={styles.searchWrap}>
+        <SearchBar value={query} onChangeText={setQuery} placeholder="Search team drivers" />
+      </View>
+      {loading ? (
+        <SkeletonList count={3} />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => load()} />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
+          onEndReachedThreshold={0.4}
+          onEndReached={loadMore}
+          ListHeaderComponent={
+            <Button title="Add Team Driver" icon="person-add-outline" onPress={() => navigation.navigate('AddTeamDriver')} style={{ marginTop: 0, marginBottom: spacing.md }} />
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="people-outline"
+              title={query ? 'No matches' : 'No team drivers yet'}
+              message={query ? 'Try a different search term.' : 'Add drivers who work under your fleet to assign them to vehicles.'}
+            />
+          }
+          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: spacing.md }} color={colors.primary} /> : null}
+          renderItem={({ item }) => (
+            <Card>
+              <View style={styles.row}>
+                <Avatar name={`${item.firstName} ${item.lastName}`} size={44} />
+                <View style={styles.info}>
+                  <Text style={styles.name}>{item.firstName} {item.lastName}</Text>
+                  <Text style={styles.muted}>{item.phoneNumber}</Text>
+                  {item.email ? <Text style={styles.muted}>{item.email}</Text> : null}
+                </View>
+                <IconButton name="trash-outline" color={colors.error} background={colors.errorSurface} onPress={() => remove(item)} accessibilityLabel="Remove driver" />
+              </View>
+            </Card>
+          )}
+        />
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: spacing.lg },
-  name: { fontSize: 17, fontWeight: '700', color: colors.text },
-  muted: { color: colors.textSecondary, fontSize: 14, marginTop: 2 },
-  remove: { marginTop: spacing.sm },
-  removeText: { color: colors.error, fontWeight: '600' },
+  searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  list: { padding: spacing.lg, paddingTop: spacing.sm, flexGrow: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  info: { flex: 1 },
+  name: { ...typography.bodyMedium, color: colors.text },
+  muted: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
 });
